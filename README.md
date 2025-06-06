@@ -125,7 +125,7 @@
       font-weight: 500;
       color: #37474f;
     }
-    .download-btn {
+    .delete-btn { /* Changed from download-btn to delete-btn */
       background-color: #ff5722;
       color: white;
       padding: 8px;
@@ -137,7 +137,7 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       transition: all 0.3s ease;
     }
-    .download-btn:hover {
+    .delete-btn:hover { /* Changed from download-btn to delete-btn */
       background-color: #e64a19;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
       transform: translateY(-2px);
@@ -857,7 +857,7 @@
   </div>
 
   <div class="manual-vi-page" id="manualVIPage">
-    <!-- The "Back to Home Page" button has been removed from here as per your request -->
+    <button class="back-btn" onclick="closeManualVIPage()">Back to Main Page</button>
     <div class="card mt-4">
       <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
         </div>
@@ -872,7 +872,7 @@
             <li>Kangra</li><li>Madurai</li><li>Mathura</li><li>Moradabad</li><li>Muzaffarnagar</li>
             <li>Mysore</li><li>Nagpur</li><li>Panipat</li><li>Pondicherry</li><li>Raipur</li>
             <li>Rajkot</li><li>Rewa</li><li>Rewari</li><li>Rohtak</li><li>Satara</li>
-            <li>Shimla</li><li>Surat</li><li>Thiruvananthapuram</li><li>Thrissur</li><li>Udaipur</li>
+            <li>Shimla</li><li>Ludhiana</li><li>Surat</li><li>Thiruvananthapuram</li><li>Thrissur</li><li>Udaipur</li>
             <li>Varanasi</li><li>Yamuna Nagar</li>
           </ul>
         </div>
@@ -925,25 +925,28 @@
 
   <script type="module">
     // Import the functions you need from the SDKs you need
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-app.js";
-    import { getStorage, ref, uploadBytesResumable, getDownloadURL, deleteObject } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-storage.js";
-    import { getDatabase, ref as dbRef, set, onValue, remove } from "https://www.gstatic.com/firebasejs/10.1.0/firebase-database.js";
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import { getDatabase, ref as dbRef, push, onValue, remove, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-database.js";
 
-    // Your web app's Firebase configuration
+    // Your web app's Firebase configuration (using config from structure.html)
     const firebaseConfig = {
-      apiKey: "AIzaSyDJdRCbQj1kxV1Ww_9-YU4mKhxCQm-UxLc",
-      authDomain: "shivang-b5e5c.firebaseapp.com",
-      projectId: "shivang-b5e5c",
-      storageBucket: "shivang-b5e5c.appspot.com",
-      messagingSenderId: "1031058737191",
-      appId: "1:1031058737191:web:3c9e9c7d7a9f5c5c9c9c9c",
-      databaseURL: "https://shivang-b5e5c-default-rtdb.firebaseio.com/"
+      apiKey: "AIzaSyCIfleywEbd1rcjymkfEfFYxPpvYdZHGhk",
+      authDomain: "cvang-vahan.firebaseapp.com",
+      databaseURL: "https://cvang-vahan-default-rtdb.firebaseio.com",
+      projectId: "cvang-vahan",
+      storageBucket: "cvang-vahan.appspot.com",
+      messagingSenderId: "117318825099",
+      appId: "1:117318825099:web:afc0e2f863117cb14bfc"
     };
 
     // Initialize Firebase
     const app = initializeApp(firebaseConfig);
-    const storage = getStorage(app);
     const db = getDatabase(app);
+    const imagesRef = dbRef(db, 'images');
+
+    // Cloudinary configuration (from structure.html)
+    const cloudName = 'di83mshki'; // Replace with your Cloudinary cloud name
+    const uploadPreset = 'anonymous_upload'; // Replace with your Cloudinary upload preset
 
     // Global variables
     let selectedFile = null;
@@ -953,99 +956,132 @@
     window.uploadImage = function() {
       const fileInput = document.getElementById('fileUpload');
       const tagInput = document.getElementById('tagInput');
-      selectedFile = fileInput.files[0];
+      const file = fileInput.files[0];
       const tag = tagInput.value.trim();
+      const progressBar = document.getElementById('progress');
+      const statusText = document.getElementById('status');
 
-      if (!selectedFile) {
-        // Using custom message box instead of alert()
+      if (!file) {
         showMessage("Please select a file first!", "error");
         return;
       }
 
       if (!tag) {
+        selectedFile = file; // Store file for modal upload
         document.getElementById('tagModal').style.display = 'flex';
         return;
       }
 
-      uploadToFirebase(selectedFile, tag);
+      uploadFile(file, tag, progressBar, statusText);
     };
 
     window.closeModal = function() {
       document.getElementById('tagModal').style.display = 'none';
+      document.getElementById('modalTagInput').value = '';
+      document.getElementById('modalProgressContainer').style.display = 'none';
+      document.getElementById('modalProgress').style.width = '0%';
+      document.getElementById('modalProgress').textContent = '0%';
+      document.querySelector('.modal-content .upload-btn').style.display = 'inline-block'; // Show buttons again
+      document.querySelector('.modal-content .cancel-btn').style.display = 'inline-block'; // Show buttons again
+      selectedFile = null; // Clear selected file
     };
 
     window.submitTag = function() {
       const modalTagInput = document.getElementById('modalTagInput');
       const tag = modalTagInput.value.trim();
+      const progressBar = document.getElementById('progress');
+      const statusText = document.getElementById('status');
+      const modalProgress = document.getElementById('modalProgress');
+      const modalProgressContainer = document.getElementById('modalProgressContainer');
 
       if (!tag) {
-        // Using custom message box instead of alert()
         showMessage("Tag is required!", "error");
         return;
       }
 
-      document.getElementById('modalProgressContainer').style.display = 'block';
-      uploadToFirebase(selectedFile, tag, true);
+      modalProgressContainer.style.display = 'block';
+      document.querySelector('.modal-content .upload-btn').style.display = 'none'; // Hide buttons during upload
+      document.querySelector('.modal-content .cancel-btn').style.display = 'none'; // Hide buttons during upload
+
+      uploadFile(selectedFile, tag, progressBar, statusText, modalProgress);
     };
 
-    function uploadToFirebase(file, tag, fromModal = false) {
-      const timestamp = new Date().getTime();
-      const fileName = `${timestamp}_${file.name}`;
-      const storageRef = ref(storage, `images/${fileName}`);
-      const uploadTask = uploadBytesResumable(storageRef, file);
+    function uploadFile(file, tag, progressBar, statusText, modalProgress = null) {
+      const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('upload_preset', uploadPreset);
+      formData.append('tags', tag);
 
-      const progressBar = fromModal ? document.getElementById('modalProgress') : document.getElementById('progress');
-      const statusText = fromModal ? null : document.getElementById('status');
+      const xhr = new XMLHttpRequest();
 
-      uploadTask.on('state_changed',
-        (snapshot) => {
-          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
-          progressBar.style.width = progress + '%';
-          progressBar.textContent = progress.toFixed(0) + '%';
-          if (statusText) statusText.textContent = 'Uploading...';
-        },
-        (error) => {
-          console.error("Upload failed:", error);
-          if (statusText) statusText.textContent = 'Upload failed!';
-          if (fromModal) {
-            // Using custom message box instead of alert()
-            showMessage("Upload failed: " + error.message, "error");
-            document.getElementById('modalProgressContainer').style.display = 'none';
+      xhr.upload.onprogress = function(event) {
+        if (event.lengthComputable) {
+          const percentComplete = Math.round((event.loaded / event.total) * 100);
+          progressBar.style.width = percentComplete + '%';
+          progressBar.textContent = percentComplete + '%';
+          if (modalProgress) {
+            modalProgress.style.width = percentComplete + '%';
+            modalProgress.textContent = percentComplete + '%';
           }
-        },
-        () => {
-          getDownloadURL(uploadTask.snapshot.ref).then((downloadURL) => {
-            const imageData = {
-              url: downloadURL,
-              tag: tag,
-              timestamp: timestamp,
-              name: file.name
-            };
-
-            set(dbRef(db, `images/${fileName.replace(/\./g, '_')}`), imageData)
-              .then(() => {
-                if (statusText) statusText.textContent = 'Upload complete!';
-                if (fromModal) {
-                  document.getElementById('tagModal').style.display = 'none';
-                  document.getElementById('modalProgressContainer').style.display = 'none';
-                  document.getElementById('modalTagInput').value = '';
-                }
-                document.getElementById('fileUpload').value = '';
-                document.getElementById('tagInput').value = '';
-                loadImages();
-              })
-              .catch((error) => {
-                console.error("Database error:", error);
-                if (statusText) statusText.textContent = 'Database error!';
-                if (fromModal) {
-                  // Using custom message box instead of alert()
-                  showMessage("Database error: " + error.message, "error");
-                  document.getElementById('modalProgressContainer').style.display = 'none';
-                }
-              });
-          });
+          statusText.textContent = 'Uploading...';
         }
-      );
+      };
+
+      xhr.onload = function() {
+        if (xhr.status === 200) {
+          const data = JSON.parse(xhr.responseText);
+          console.log("Cloudinary Response:", data);
+          if (!data.secure_url) {
+            showMessage('Upload failed: No secure URL received', 'error');
+            statusText.textContent = 'Upload failed!';
+            closeModal();
+            return;
+          }
+          const imgObj = {
+            url: data.secure_url,
+            tag: tag,
+            timestamp: Date.now() // Use Date.now() for client-side timestamp
+          };
+          push(imagesRef, imgObj)
+            .then(() => {
+              console.log("Firebase Push Successful:", imgObj);
+              progressBar.style.width = '100%';
+              progressBar.textContent = '100%';
+              if (modalProgress) {
+                modalProgress.style.width = '100%';
+                modalProgress.textContent = '100%';
+              }
+              statusText.textContent = 'Complete';
+              showMessage('Uploaded Successfully!', 'info');
+              closeModal();
+              document.getElementById('fileUpload').value = ''; // Clear file input
+              document.getElementById('tagInput').value = ''; // Clear tag input
+              loadImages(); // Reload images to display the new one
+            })
+            .catch((error) => {
+              console.error("Firebase Push Error:", error);
+              statusText.textContent = 'Upload failed: Firebase error';
+              showMessage('Upload failed: Firebase error', 'error');
+              closeModal();
+            });
+        } else {
+          console.error("Cloudinary Upload Failed (HTTP status:", xhr.status, ") Response:", xhr.responseText);
+          statusText.textContent = 'Upload failed!';
+          showMessage('Upload failed!', 'error');
+          closeModal();
+        }
+      };
+
+      xhr.onerror = function() {
+        console.error("Upload error occurred (XHR onerror):", xhr.status);
+        statusText.textContent = 'Upload error occurred!';
+        showMessage('Upload failed due to a network error!', 'error');
+        closeModal();
+      };
+
+      xhr.open('POST', url, true);
+      xhr.send(formData);
     }
 
     // Custom message box function (instead of alert)
@@ -1080,75 +1116,71 @@
     }
 
 
-    window.deleteImage = function(key, storagePath) {
-      // Using custom message box instead of confirm()
-      const confirmDelete = true; // For demonstration, automatically confirm
-      // In a real app, you'd use a custom modal for confirmation
-      // Example: showConfirmModal("Are you sure you want to delete this image?", () => { ... });
-
-      if (confirmDelete) {
-        const imageRef = ref(storage, storagePath);
-        deleteObject(imageRef)
-          .then(() => {
-            remove(dbRef(db, `images/${key}`))
-              .then(() => {
-                console.log("Image deleted successfully");
-                showMessage("Image deleted successfully!", "info");
-                loadImages();
-              })
-              .catch((error) => {
-                console.error("Error deleting from database:", error);
-                showMessage("Error deleting from database: " + error.message, "error");
-              });
-          })
-          .catch((error) => {
-            console.error("Error deleting from storage:", error);
-            showMessage("Error deleting from storage: " + error.message, "error");
-          });
-      }
+    window.deleteImage = function(key) {
+      // Only remove from Firebase Realtime Database
+      remove(dbRef(db, `images/${key}`))
+        .then(() => {
+            console.log("Image data deleted from Realtime Database successfully");
+            showMessage("Image deleted successfully!", "info");
+        })
+        .catch((error) => {
+            console.error("Error deleting from database:", error);
+            showMessage("Error deleting from database: " + error.message, "error");
+        });
     };
 
     function loadImages() {
       const gallery = document.getElementById('gallery');
       gallery.innerHTML = '';
 
-      const imagesRef = dbRef(db, 'images');
+      // Clear the gallery first to avoid duplicates when data updates
+      // The onValue listener will handle re-rendering on changes
       onValue(imagesRef, (snapshot) => {
-        if (snapshot.exists()) {
-          gallery.innerHTML = ''; // Clear previous images to prevent duplicates
-          const data = snapshot.val();
-          Object.entries(data).forEach(([key, value]) => {
-            if (value && value.url) {
+        gallery.innerHTML = ''; // Clear content every time data changes
+        const images = snapshot.val();
+        const now = Date.now();
+
+        if (images) {
+          const sortedImages = Object.entries(images)
+            .map(([key, img]) => ({ key, ...img }))
+            .sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)); // Sort by timestamp descending
+
+          sortedImages.forEach(({ key, url, tag, timestamp }) => {
+            // Check if the image is older than 5 minutes (300,000 milliseconds)
+            // If it is, delete it from the database (cleanup logic)
+            if (now - (timestamp || 0) > 300000) {
+              remove(dbRef(db, `images/${key}`))
+                .then(() => console.log(`Image ${key} deleted (older than 5 min)`))
+                .catch((error) => console.error("Auto-delete error:", error));
+            } else {
               const container = document.createElement('div');
               container.className = 'image-container';
 
-              const img = document.createElement('img');
-              img.src = value.url;
-              img.alt = value.tag || 'Uploaded image';
-              img.loading = 'lazy';
+              const imgElement = document.createElement('img');
+              imgElement.src = url;
+              imgElement.alt = tag || 'Uploaded image';
+              imgElement.loading = 'lazy';
+              imgElement.onerror = () => { // Fallback for broken images
+                imgElement.src = `https://placehold.co/150x150/cccccc/333333?text=Image+Error`;
+                console.warn(`Failed to load image: ${url}`);
+              };
 
-              const tag = document.createElement('p');
-              tag.className = 'tag';
-              tag.textContent = value.tag || 'No tag';
+              const tagElement = document.createElement('p');
+              tagElement.className = 'tag';
+              tagElement.textContent = `Tag: ${tag || 'No tag'}`;
 
-              const downloadBtn = document.createElement('button');
-              downloadBtn.className = 'download-btn';
-              downloadBtn.textContent = 'Delete';
-              downloadBtn.onclick = () => deleteImage(key, `images/${key.replace(/_/g, '.')}`);
+              const deleteBtn = document.createElement('button');
+              deleteBtn.className = 'delete-btn';
+              deleteBtn.textContent = 'Delete';
+              deleteBtn.onclick = () => deleteImage(key); // Call deleteImage with Firebase key
 
-              container.appendChild(img);
-              container.appendChild(tag);
-              container.appendChild(downloadBtn);
+              container.appendChild(imgElement);
+              container.appendChild(tagElement);
+              container.appendChild(deleteBtn);
               gallery.appendChild(container);
-            } else {
-              // Clean up invalid entries if they exist
-              remove(dbRef(db, `images/${key}`))
-                .then(() => console.log(`Invalid image entry ${key} removed from Firebase`))
-                .catch((error) => console.error("Invalid entry cleanup error:", error));
             }
           });
         } else {
-          console.log("No images in Firebase");
           gallery.innerHTML = '<p style="color: #455a64; margin-top: 20px;">No images uploaded yet.</p>';
         }
       });
@@ -1347,7 +1379,7 @@
     const outputBox = document.querySelector('.endorsement-page #output');
 
     // Empty array for you to manually add JSON data for Endorsement
-    const data = [{
+    const endorsementData = [{
     "InsurerRequirement": "New India AssuranceAddition of GST No.",
     "Insurer": "New India Assurance",
     "Requirement": "Addition of GST No.",
@@ -12209,11 +12241,11 @@
     "Any Exception": "For ticketing associates: Feedfile required while raising the case if Policy number starts with 52 series",
     "Declaration format (if declaration required)": null
   }
-]; // Your JSON data for Endorsement goes here
+];
 
-    // Populate insurer dropdown
+    // Populate insurer dropdown for Endorsement
     try {
-      const insurers = [...new Set(data.map(d => d["Insurer"]))].sort();
+      const insurers = [...new Set(endorsementData.map(d => d["Insurer"]))].sort();
       insurers.forEach(ins => {
         const opt = document.createElement("option");
         opt.value = opt.textContent = ins;
@@ -12221,7 +12253,7 @@
       });
     } catch (error) {
       console.error("Error populating insurers for endorsement:", error);
-      // showMessage("Error in endorsement JSON data. Please check the syntax and paste valid JSON.", "error");
+      showMessage("Error in endorsement JSON data. Please check the syntax and paste valid JSON.", "error");
     }
 
     // Handle insurer selection for endorsement
@@ -12231,7 +12263,7 @@
       outputBox.classList.remove("show", "output-red");
       const selectedInsurer = insurerDropdown.value;
       const requirements = [...new Set(
-        data.filter(d => d["Insurer"] === selectedInsurer)
+        endorsementData.filter(d => d["Insurer"] === selectedInsurer)
             .map(d => d["Requirement"])
       )].sort();
       requirements.forEach(req => {
@@ -12246,7 +12278,7 @@
     requirementDropdown.addEventListener("change", () => {
       const ins = insurerDropdown.value;
       const req = requirementDropdown.value;
-      const record = data.find(
+      const record = endorsementData.find(
         d => d["Insurer"] === ins && d["Requirement"] === req
       );
       if (record) {
